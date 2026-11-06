@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 课表格子图形：绿色背景上的白色课程表图标 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.6" android:scaleY="0.6" android:translateX="21.6" android:translateY="21.6">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M30,24 h48 a6,6 0 0 1 6,6 v48 a6,6 0 0 1 -6,6 h-48 a6,6 0 0 1 -6,-6 v-48 a6,6 0 0 1 6,-6 z M30,30 v10 h48 v-10 z M30,46 v12 h12 v-12 z M48,46 v12 h12 v-12 z M66,46 v12 h12 v-12 z M30,64 v12 h12 v-12 z M48,64 v12 h12 v-12 z M66,64 v12 h12 v-12 z" />
+        <path
+            android:fillColor="#A5D6B8"
+            android:pathData="M38,18 h6 v10 h-6 z M64,18 h6 v10 h-6 z" />
+    </group>
+</vector>
