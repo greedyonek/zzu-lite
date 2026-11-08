@@ -519,7 +519,7 @@ private fun SettingsCard(state: ServicesUiState, vm: ServicesViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("电费不足提醒", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "低于 10 元时通知（每小时检查一次）",
+                        "剩余电量低于 10 度时通知（无电量数据按余额 10 元）；每小时检查",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

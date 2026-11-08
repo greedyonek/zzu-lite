@@ -27,6 +27,7 @@ class CacheStore(private val context: Context, private val json: kotlinx.seriali
         val ENERGY = stringPreferencesKey("energy_cache_json")
         val ALERT_ENABLED = booleanPreferencesKey("energy_alert_enabled")
         val LAST_ALERT_VALUE = stringPreferencesKey("energy_last_alert_value")
+        val LAST_ALERT_KIND = stringPreferencesKey("energy_last_alert_kind")
         val LAST_ALERT_AT = longPreferencesKey("energy_last_alert_at")
     }
 
@@ -105,15 +106,18 @@ class CacheStore(private val context: Context, private val json: kotlinx.seriali
         context.dataStore.edit { it[Keys.ALERT_ENABLED] = enabled }
     }
 
-    /** 上次提醒时的电费值（用于判断"跨过阈值"）与时间戳 */
+    /** 上次提醒时的指标值/类型（用于判断"跨过阈值"）与时间戳 */
     suspend fun lastAlertValue(): Double? =
         context.dataStore.data.first()[Keys.LAST_ALERT_VALUE]?.toDoubleOrNull()
 
+    suspend fun lastAlertKind(): String? = context.dataStore.data.first()[Keys.LAST_ALERT_KIND]
+
     suspend fun lastAlertAt(): Long = context.dataStore.data.first()[Keys.LAST_ALERT_AT] ?: 0L
 
-    suspend fun saveAlertState(value: Double?, at: Long) {
+    suspend fun saveAlertState(value: Double?, kind: String?, at: Long) {
         context.dataStore.edit { p ->
             if (value == null) p -= Keys.LAST_ALERT_VALUE else p[Keys.LAST_ALERT_VALUE] = value.toString()
+            if (kind == null) p -= Keys.LAST_ALERT_KIND else p[Keys.LAST_ALERT_KIND] = kind
             p[Keys.LAST_ALERT_AT] = at
         }
     }

@@ -25,25 +25,44 @@ import com.zzu.lite.data.repo.RoomEnergy
 import java.util.concurrent.TimeUnit
 
 /**
- * 电费不足提醒：低于 10 元时通知。
+ * 电费不足提醒。
+ * 指标优先级：剩余电量（度，房间实际消耗）> 电费余额（元）> remaining 兜底。
  * 策略：跨过阈值立即提醒一次；持续偏低时每 24 小时重提一次；回充到阈值以上自动复位。
  */
 object EnergyAlert {
 
-    const val THRESHOLD_YUAN = 10.0
+    const val THRESHOLD = 10.0
     private const val CHANNEL_ID = "energy_alert"
     private const val NOTIFICATION_ID = 1001
     private const val REPEAT_INTERVAL_MS = 24L * 3600_000L
 
-    /** 从展示项里解析出"元"为单位的电费值：优先余额/电费标签，其次电量(度)，最后 remaining */
-    fun moneyValue(energy: RoomEnergy): Double? {
-        val template = energy.templates.firstOrNull {
-            it.label.contains("余额") || it.label.contains("电费") || it.valueText.contains("元")
-        } ?: energy.templates.firstOrNull()
-        val fromTemplate = template?.valueText?.let {
-            Regex("""\d+(\.\d+)?""").find(it)?.value?.toDoubleOrNull()
+    /** 提醒盯的指标（kind 用于区分阈值口径，避免电量/余额切换时误判"跨阈值"） */
+    data class Metric(val kind: String, val label: String, val value: Double, val unit: String)
+
+    private val numberRegex = Regex("""\d+(\.\d+)?""")
+
+    private fun parseValue(text: String): Double? =
+        numberRegex.find(text)?.value?.toDoubleOrNull()
+
+    /** 选择提醒指标：电量优先，其次余额类，最后 remaining 兜底 */
+    fun primaryMetric(energy: RoomEnergy): Metric? {
+        val quantity = energy.templates.firstOrNull {
+            it.label.contains("电量") || it.label.contains("quantity", ignoreCase = true)
         }
-        return fromTemplate ?: energy.remaining
+        if (quantity != null) {
+            parseValue(quantity.valueText)?.let {
+                return Metric("energy", "剩余电量", it, "度")
+            }
+        }
+        val money = energy.templates.firstOrNull {
+            it.label.contains("余额") || it.label.contains("电费") || it.valueText.contains("元")
+        }
+        if (money != null) {
+            parseValue(money.valueText)?.let {
+                return Metric("money", "电费余额", it, "元")
+            }
+        }
+        return energy.remaining?.let { Metric("energy", "剩余电量", it, "度") }
     }
 
     fun ensureChannel(context: Context) {
@@ -51,7 +70,7 @@ object EnergyAlert {
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "电费不足提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "宿舍电费低于阈值时提醒充值"
+                    description = "宿舍电量/电费低于阈值时提醒充值"
                 }
             )
         }
@@ -66,27 +85,28 @@ object EnergyAlert {
         val store = (appContext as ZzuApp).container.cacheStore
         if (!store.energyAlertEnabled()) return false
 
-        val value = moneyValue(energy) ?: return false
+        val metric = primaryMetric(energy) ?: return false
         val now = System.currentTimeMillis()
         val last = store.lastAlertValue()
+        val lastKind = store.lastAlertKind()
         val lastAt = store.lastAlertAt()
 
-        val isLow = value < THRESHOLD_YUAN
+        val isLow = metric.value < THRESHOLD
         if (!isLow) {
             // 回充复位，下次再跌破时可再次提醒
-            if (last != null) store.saveAlertState(null, 0L)
+            if (last != null) store.saveAlertState(null, null, 0L)
             return false
         }
-        val crossing = last == null || last >= THRESHOLD_YUAN
+        val crossing = last == null || lastKind != metric.kind || last >= THRESHOLD
         val stale = now - lastAt >= REPEAT_INTERVAL_MS
         if (!crossing && !stale) return false
 
-        notify(appContext, value, energy)
-        store.saveAlertState(value, now)
+        notify(appContext, metric, energy)
+        store.saveAlertState(metric.value, metric.kind, now)
         return true
     }
 
-    private fun notify(context: Context, value: Double, energy: RoomEnergy) {
+    private fun notify(context: Context, metric: Metric, energy: RoomEnergy) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
@@ -97,11 +117,12 @@ object EnergyAlert {
             context, 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val text = "当前 ${"%.2f".format(value)} 元（房间 ${energy.room}）已低于 " +
-            "${"%.0f".format(THRESHOLD_YUAN)} 元，请及时充值"
+        val title = if (metric.kind == "energy") "宿舍电量不足" else "宿舍电费不足"
+        val text = "${metric.label} ${"%.2f".format(metric.value)} ${metric.unit}" +
+            "（房间 ${energy.room}）已低于 ${"%.0f".format(THRESHOLD)} ${metric.unit}，请及时充值"
         val notification: Notification = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("宿舍电费不足")
+            .setContentTitle(title)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(pending)
